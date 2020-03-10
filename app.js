@@ -9,8 +9,9 @@ const passport = require('passport');
 const passportLocalMongoose = require('passport-local-mongoose');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const findOrCreate = require('mongoose-findorcreate');
+var nodemailer = require('nodemailer');
 
-const app = express();
+const app =  express();
 
 app.use(express.static("public"));
 app.set('view engine', 'ejs');
@@ -27,14 +28,15 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-mongoose.connect("mongodb://localhost:27017/userDB", {useNewUrlParser: true});
+mongoose.connect("mongodb://localhost:27017/userDB", {useNewUrlParser: true, useUnifiedTopology: true});
 mongoose.set("useCreateIndex", true);
 
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
   googleId: String,
-  secret: String
+  secret: String,
+  secretToken: String
 });
 
 userSchema.plugin(passportLocalMongoose);
@@ -115,19 +117,41 @@ app.get("/submit", function(req, res) {
 
 app.post("/submit", function(req, res) {
   const submittedSecret = req.body.secret;
-  console.log(req.user.id);
   User.findById(req.user.id, function(err, foundUser){
     if(err) {
       console.log(err);
     } else {
       if(foundUser) {
         foundUser.secret = submittedSecret;
+        var transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: '@gmail.com',
+            pass: ''
+          }
+        });
+
+        var mailOptions = {
+          from: '@gmail.com',
+          to: foundUser.username,
+          subject: 'LOR Submission',
+          text: submittedSecret
+        };
+
+        transporter.sendMail(mailOptions, function(err, info) {
+          if(err) {
+            console.log(err);
+          } else {
+            console.log('Email sent: ' + info.response);
+          }
+        });
         foundUser.save(function(){
           res.redirect("/secrets")
         });
       }
     }
   });
+
 });
 
 app.get("/logout", function(req, res) {
@@ -141,11 +165,32 @@ app.post("/register", function(req, res) {
       console.log(err);
       res.redirect("/register");
     } else {
+      var transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: '@gmail.com',
+          pass: ''
+        }
+      });
+      var mailOptions = {
+        from: '@gmail.com',
+        to: req.body.username,
+        subject: 'LOR Account verification',
+        text: 'Thankyou for registering to our official LOR page!'
+      };
+
+      transporter.sendMail(mailOptions, function(err, info) {
+        if(err) {
+          console.log(err);
+        } else {
+          console.log('Email sent: ' + info.response);
+        }
+      });
       passport.authenticate("local")(req, res, function(){
         res.redirect("/secrets");
       });
     }
-  });
+  })
 });
 
 app.post("/login", function(req, res) {
